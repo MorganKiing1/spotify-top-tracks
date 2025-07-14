@@ -11,17 +11,17 @@ const app = express();
 app.use(cors());
 app.use(express.static("public"));
 
-// Environment variables
+// Spotify credentials from .env
 const client_id = process.env.SPOTIFY_CLIENT_ID;
 const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 const redirect_uri = process.env.REDIRECT_URI;
 
-// Root route to show the app is alive
+// ✅ Root route
 app.get("/", (req, res) => {
   res.send("✅ Spotify Top Tracks backend is running.");
 });
 
-// Login route: sends user to Spotify login
+// 🔐 Login route
 app.get("/login", (req, res) => {
   const scope = "user-top-read";
   const auth_query_params = querystring.stringify({
@@ -31,15 +31,11 @@ app.get("/login", (req, res) => {
     redirect_uri,
   });
 
-  // Log for debugging
-  console.log("➡️ Login route hit");
-  console.log("Redirect URI used for Spotify authorization:", redirect_uri);
-  console.log(`Full Spotify Auth URL: https://accounts.spotify.com/authorize?${auth_query_params}`);
-
+  console.log("➡️ Redirecting to Spotify login...");
   res.redirect(`https://accounts.spotify.com/authorize?${auth_query_params}`);
 });
 
-// Callback route: Spotify redirects here after login
+// 🎯 Callback route from Spotify
 app.get("/callback", (req, res) => {
   const code = req.query.code || null;
 
@@ -52,42 +48,54 @@ app.get("/callback", (req, res) => {
     },
     headers: {
       Authorization:
-        "Basic " + Buffer.from(client_id + ":" + client_secret).toString("base64"),
+        "Basic " + Buffer.from(`${client_id}:${client_secret}`).toString("base64"),
     },
     json: true,
   };
 
   request.post(authOptions, (error, response, body) => {
     if (error || response.statusCode !== 200) {
-      console.error("❌ Error fetching access token", error || body);
+      console.error("❌ Error fetching access token:", error || body);
       return res.status(response.statusCode).json({ error: "Failed to get access token" });
     }
 
     const access_token = body.access_token;
     console.log("✅ Access token received");
+
+    // Redirect back to frontend with access_token in hash
     res.redirect("/#access_token=" + access_token);
   });
 });
 
-// Top Tracks route: fetches user's top tracks using the access token
+// 🎵 Top Tracks route
 app.get("/top-tracks", (req, res) => {
   const access_token = req.query.access_token;
+  if (!access_token) {
+    return res.status(400).json({ error: "Missing access_token" });
+  }
+
   const options = {
-    url: "https://api.spotify.com/v1/me/top/tracks?limit=100",
-    headers: { Authorization: "Bearer " + access_token },
+    url: "https://api.spotify.com/v1/me/top/tracks?limit=50", // ✅ Spotify's max allowed
+    headers: { Authorization: `Bearer ${access_token}` },
     json: true,
   };
 
   request.get(options, (error, response, body) => {
     if (error) {
-      console.error("❌ Error fetching top tracks", error);
+      console.error("❌ Error fetching top tracks:", error);
       return res.status(500).json({ error: "Failed to fetch top tracks" });
     }
+
+    if (body.error) {
+      console.error("⚠️ Spotify API error:", body.error);
+      return res.status(body.error.status || 400).json(body.error);
+    }
+
     res.json(body);
   });
 });
 
-// Start the server on Replit's port or default to 8888
+// ✅ Start the server
 const PORT = process.env.PORT || 8888;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
