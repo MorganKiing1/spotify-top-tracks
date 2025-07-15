@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 import request from "request";
 import querystring from "querystring";
 import cors from "cors";
-import { v4 as uuidv4 } from "uuid";
 
 // Load environment variables
 dotenv.config();
@@ -12,19 +11,20 @@ const app = express();
 app.use(cors());
 app.use(express.static("public"));
 
-// Spotify API credentials
 const client_id = process.env.SPOTIFY_CLIENT_ID;
 const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 const redirect_uri = process.env.REDIRECT_URI;
 
-let groupTracks = []; // Stores tracks from all users
+// Diagnostics: log what's loaded
+console.log("🟢 Loaded SPOTIFY_CLIENT_ID:", client_id);
+console.log("🟢 Loaded REDIRECT_URI:", redirect_uri);
 
-// ✅ Root page (index.html)
+// ✅ Homepage
 app.get("/", (req, res) => {
-  res.sendFile("index.html", { root: "./public" });
+  res.send("🎵 Spotify Party App backend is running.");
 });
 
-// 🔐 Spotify Login
+// 🔐 Login
 app.get("/login", (req, res) => {
   const scope = "user-top-read";
   const auth_query_params = querystring.stringify({
@@ -34,12 +34,20 @@ app.get("/login", (req, res) => {
     redirect_uri,
   });
 
-  res.redirect(`https://accounts.spotify.com/authorize?${auth_query_params}`);
+  const fullURL = `https://accounts.spotify.com/authorize?${auth_query_params}`;
+  console.log("🔁 Using redirect URI:", redirect_uri);
+  console.log("📡 Final login URL to Spotify:", fullURL);
+
+  res.redirect(fullURL);
 });
 
-// 🎯 Spotify Redirect Callback
+// 🎯 Callback
 app.get("/callback", (req, res) => {
   const code = req.query.code || null;
+  if (!code) {
+    console.error("❌ No code received in callback.");
+    return res.status(400).send("No code received from Spotify.");
+  }
 
   const authOptions = {
     url: "https://accounts.spotify.com/api/token",
@@ -57,64 +65,44 @@ app.get("/callback", (req, res) => {
 
   request.post(authOptions, (error, response, body) => {
     if (error || response.statusCode !== 200) {
-      console.error("❌ Failed to get access token");
+      console.error("❌ Failed to exchange code for token.");
+      console.error("Status:", response.statusCode);
       console.error("Error:", error);
-      console.error("Status Code:", response?.statusCode);
-      console.error("Body:", body);
-      return res.status(500).send("❌ Failed to get access token");
+      console.error("Response Body:", body);
+      return res.status(response.statusCode).send("❌ Failed to get access token");
     }
 
     const access_token = body.access_token;
-
-    // After receiving token, fetch top tracks
-    const options = {
-      url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
-      headers: { Authorization: `Bearer ${access_token}` },
-      json: true,
-    };
-
-    request.get(options, (err, response, body) => {
-      if (err || body.error) {
-        console.error("❌ Failed to fetch top tracks");
-        return res.status(500).send("❌ Failed to fetch top tracks");
-      }
-
-      // Add new user's top tracks to groupTracks
-      if (body.items) {
-        groupTracks.push(...body.items.map((track) => ({
-          id: track.id,
-          name: track.name,
-          artists: track.artists.map((a) => a.name).join(", "),
-          url: track.external_urls.spotify,
-        })));
-        console.log(`✅ Added ${body.items.length} tracks to group list`);
-      }
-
-      // Redirect to home with confirmation
-      res.redirect("/?added=true");
-    });
+    console.log("✅ Access token received");
+    res.redirect("/#access_token=" + access_token);
   });
 });
 
-// 🎵 Show aggregated popular tracks
-app.get("/aggregate", (req, res) => {
-  // Count how many times each track appears
-  const trackMap = {};
-  for (let track of groupTracks) {
-    if (trackMap[track.id]) {
-      trackMap[track.id].count += 1;
-    } else {
-      trackMap[track.id] = { ...track, count: 1 };
-    }
+// 🎵 Top tracks route (optional)
+app.get("/top-tracks", (req, res) => {
+  const access_token = req.query.access_token;
+  if (!access_token) {
+    return res.status(400).json({ error: "Missing access_token" });
   }
 
-  // Convert to array and sort by count
-  const popular = Object.values(trackMap).sort((a, b) => b.count - a.count);
-  res.json(popular);
+  const options = {
+    url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
+    headers: { Authorization: `Bearer ${access_token}` },
+    json: true,
+  };
+
+  request.get(options, (error, response, body) => {
+    if (error) {
+      console.error("❌ Error fetching top tracks:", error);
+      return res.status(500).json({ error: "Failed to fetch top tracks" });
+    }
+
+    res.json(body);
+  });
 });
 
-// ✅ Start the server
+// Start server
 const PORT = process.env.PORT || 8888;
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
