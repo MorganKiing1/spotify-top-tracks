@@ -5,8 +5,7 @@ import querystring from "querystring";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import pkg from "uuid";
-const { v4: uuidv4 } = pkg;
+import { v4 as uuidv4 } from "uuid";
 
 // Setup __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
