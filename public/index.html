@@ -3,56 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>🎵 Spotify Party Tracks</title>
+  <title>Spotify Party Tracks</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      padding: 2em;
-      max-width: 600px;
-      margin: auto;
+      padding: 2rem;
       text-align: center;
-    }
-    h1 {
-      font-size: 2rem;
+      background-color: #191414;
+      color: #1DB954;
     }
     button {
-      padding: 1em 2em;
+      margin: 1rem;
+      padding: 1rem 2rem;
       font-size: 1rem;
-      margin: 1em;
+      background-color: #1DB954;
+      border: none;
+      color: white;
       cursor: pointer;
+      border-radius: 5px;
     }
     ul {
-      text-align: left;
-      padding-left: 0;
+      list-style-type: none;
+      padding: 0;
+      margin-top: 2rem;
     }
     li {
-      list-style: none;
-      padding: 0.5em 0;
+      margin: 0.5rem 0;
     }
   </style>
 </head>
 <body>
   <h1>🎵 Spotify Party Tracks</h1>
-  <button onclick="location.href='/login'">Login with Spotify</button>
-  <button onclick="loadAggregate()">Show Most Popular Songs</button>
+  <button onclick="window.location.href='/login'">Login with Spotify</button>
+  <button onclick="showTopSongs()">Show Most Popular Songs</button>
 
-  <div id="trackList"></div>
+  <ul id="songList"></ul>
 
   <script>
-    async function loadAggregate() {
+    async function showTopSongs() {
       const response = await fetch('/aggregate');
-      const data = await response.json();
+      const songs = await response.json();
 
-      const list = document.createElement('ul');
-      data.forEach(item => {
-        const li = document.createElement('li');
-        li.textContent = `${item.track} (${item.count})`;
+      const list = document.getElementById('songList');
+      list.innerHTML = "";
+
+      if (songs.length === 0) {
+        list.innerHTML = "<li>No data yet. Ask friends to log in first!</li>";
+        return;
+      }
+
+      songs.forEach(({ track, count }) => {
+        const li = document.createElement("li");
+        li.textContent = `${track} (${count} votes)`;
         list.appendChild(li);
       });
-
-      const trackList = document.getElementById('trackList');
-      trackList.innerHTML = '';
-      trackList.appendChild(list);
     }
   </script>
 </body>
