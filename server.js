@@ -3,22 +3,30 @@ import dotenv from "dotenv";
 import request from "request";
 import querystring from "querystring";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 
 // Load environment variables
 dotenv.config();
 
+// ES module workaround for __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 app.use(cors());
-app.use(express.static("public"));
 
-// Spotify credentials from .env
+// Serve static files (e.g., index.html) from public folder
+app.use(express.static(path.join(__dirname, "public")));
+
+// Spotify credentials
 const client_id = process.env.SPOTIFY_CLIENT_ID;
 const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 const redirect_uri = process.env.REDIRECT_URI;
 
-// ✅ Root route
+// ✅ Serve frontend at root
 app.get("/", (req, res) => {
-  res.send("✅ Spotify Top Tracks backend is running.");
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // 🔐 Login route
@@ -35,7 +43,7 @@ app.get("/login", (req, res) => {
   res.redirect(`https://accounts.spotify.com/authorize?${auth_query_params}`);
 });
 
-// 🎯 Callback route from Spotify
+// 🎯 Callback route
 app.get("/callback", (req, res) => {
   const code = req.query.code || null;
 
@@ -61,8 +69,6 @@ app.get("/callback", (req, res) => {
 
     const access_token = body.access_token;
     console.log("✅ Access token received");
-
-    // Redirect back to frontend with access_token in hash
     res.redirect("/#access_token=" + access_token);
   });
 });
@@ -75,7 +81,7 @@ app.get("/top-tracks", (req, res) => {
   }
 
   const options = {
-    url: "https://api.spotify.com/v1/me/top/tracks?limit=50", // ✅ Spotify's max allowed
+    url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
     headers: { Authorization: `Bearer ${access_token}` },
     json: true,
   };
