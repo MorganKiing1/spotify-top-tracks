@@ -1,45 +1,58 @@
-<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Your Spotify Top Tracks</title>
+  <title>🎵 Spotify Party Tracks</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2em;
+      max-width: 600px;
+      margin: auto;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2rem;
+    }
+    button {
+      padding: 1em 2em;
+      font-size: 1rem;
+      margin: 1em;
+      cursor: pointer;
+    }
+    ul {
+      text-align: left;
+      padding-left: 0;
+    }
+    li {
+      list-style: none;
+      padding: 0.5em 0;
+    }
+  </style>
 </head>
 <body>
-  <h1>🎵 Your Spotify Top Tracks</h1>
-  <div id="status">Logging in...</div>
+  <h1>🎵 Spotify Party Tracks</h1>
+  <button onclick="location.href='/login'">Login with Spotify</button>
+  <button onclick="loadAggregate()">Show Most Popular Songs</button>
+
+  <div id="trackList"></div>
 
   <script>
-    function getAccessTokenFromURL() {
-      const hash = window.location.hash.substring(1);
-      const params = new URLSearchParams(hash);
-      return params.get("access_token");
-    }
+    async function loadAggregate() {
+      const response = await fetch('/aggregate');
+      const data = await response.json();
 
-    const accessToken = getAccessTokenFromURL();
+      const list = document.createElement('ul');
+      data.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = `${item.track} (${item.count})`;
+        list.appendChild(li);
+      });
 
-    if (!accessToken) {
-      document.getElementById("status").innerText = "Access token missing. Please log in again.";
-    } else {
-      document.getElementById("status").innerText = "Access token received. Submitting...";
-
-      fetch("/store-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: accessToken }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            document.getElementById("status").innerText = "✅ Your tracks were added to the group list!";
-          } else {
-            document.getElementById("status").innerText = "❌ Failed to store tracks.";
-          }
-        })
-        .catch(() => {
-          document.getElementById("status").innerText = "❌ Error sending data.";
-        });
+      const trackList = document.getElementById('trackList');
+      trackList.innerHTML = '';
+      trackList.appendChild(list);
     }
   </script>
 </body>
