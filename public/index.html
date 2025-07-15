@@ -6,81 +6,80 @@
   <title>🎵 Spotify Party Tracks</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family: sans-serif;
       text-align: center;
-      padding: 2rem;
-      background-color: #121212;
-      color: #ffffff;
-    }
-
-    h1 {
-      font-size: 2rem;
-      margin-bottom: 1.5rem;
-    }
-
-    button {
-      margin: 0.5rem;
-      padding: 1rem 1.5rem;
-      font-size: 1rem;
-      border: none;
-      border-radius: 8px;
-      background-color: #1db954;
+      padding: 40px;
+      background: #121212;
       color: white;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 12px;
       cursor: pointer;
-      transition: background 0.2s;
+      background: #1db954;
+      border: none;
+      border-radius: 5px;
+      color: white;
     }
-
-    button:hover {
-      background-color: #1ed760;
-    }
-
     ul {
       list-style: none;
       padding: 0;
-      margin-top: 2rem;
     }
-
     li {
-      margin-bottom: 0.5rem;
-      font-size: 1.1rem;
+      margin: 10px 0;
+    }
+    a {
+      color: #1db954;
+      text-decoration: none;
     }
   </style>
 </head>
 <body>
   <h1>🎵 Spotify Party Tracks</h1>
 
-  <button onclick="window.location.href='/login'">Login with Spotify</button>
-  <button onclick="showTopSongs()">Show Most Popular Songs</button>
+  <div id="status"></div>
 
-  <ul id="songList">
-    <li>Waiting for songs...</li>
-  </ul>
+  <button onclick="window.location.href='/login'">Login with Spotify</button>
+  <button onclick="loadPopularTracks()">Show Most Popular Songs</button>
+
+  <ul id="trackList"></ul>
 
   <script>
-    async function showTopSongs() {
-      const response = await fetch('/aggregate');
-      const songs = await response.json();
-
-      const list = document.getElementById('songList');
-      list.innerHTML = "";
-
-      if (songs.length === 0) {
-        list.innerHTML = "<li>No data yet. Ask friends to log in first!</li>";
-        return;
-      }
-
-      songs.forEach(({ track, count }) => {
-        const li = document.createElement("li");
-        li.textContent = `${track} (${count} votes)`;
-        list.appendChild(li);
-      });
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("added") === "true") {
+      document.getElementById("status").innerText = "✅ Your tracks have been added to the group list!";
     }
 
-    // Call once on page load
-    showTopSongs();
+    async function loadPopularTracks() {
+      try {
+        const res = await fetch('/aggregate');
+        const data = await res.json();
 
-    // Refresh every 10 seconds
-    setInterval(showTopSongs, 10000);
+        if (!Array.isArray(data)) {
+          document.getElementById("status").innerText = "⚠️ No group data available yet.";
+          return;
+        }
+
+        const list = document.getElementById("trackList");
+        list.innerHTML = "";
+        data.forEach((track, index) => {
+          const item = document.createElement("li");
+          item.innerHTML = `<strong>#${index + 1}</strong> - ${track.name} by ${track.artists} (<a href="${track.url}" target="_blank">Play</a>) - ⭐ ${track.count}`;
+          list.appendChild(item);
+        });
+
+        if (data.length === 0) {
+          document.getElementById("status").innerText = "⚠️ No tracks in group yet.";
+        } else {
+          document.getElementById("status").innerText = `🎉 Showing top ${data.length} songs!`;
+        }
+
+      } catch (e) {
+        console.error("Error loading aggregate tracks", e);
+        document.getElementById("status").innerText = "❌ Failed to load tracks.";
+      }
+    }
   </script>
 </body>
 </html>
