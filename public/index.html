@@ -3,41 +3,58 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Spotify Party Tracks</title>
+  <title>🎵 Spotify Party Tracks</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      padding: 2rem;
       text-align: center;
-      background-color: #191414;
-      color: #1DB954;
+      padding: 2rem;
+      background-color: #121212;
+      color: #ffffff;
     }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
     button {
-      margin: 1rem;
-      padding: 1rem 2rem;
+      margin: 0.5rem;
+      padding: 1rem 1.5rem;
       font-size: 1rem;
-      background-color: #1DB954;
       border: none;
+      border-radius: 8px;
+      background-color: #1db954;
       color: white;
       cursor: pointer;
-      border-radius: 5px;
+      transition: background 0.2s;
     }
+
+    button:hover {
+      background-color: #1ed760;
+    }
+
     ul {
-      list-style-type: none;
+      list-style: none;
       padding: 0;
       margin-top: 2rem;
     }
+
     li {
-      margin: 0.5rem 0;
+      margin-bottom: 0.5rem;
+      font-size: 1.1rem;
     }
   </style>
 </head>
 <body>
   <h1>🎵 Spotify Party Tracks</h1>
+
   <button onclick="window.location.href='/login'">Login with Spotify</button>
   <button onclick="showTopSongs()">Show Most Popular Songs</button>
 
-  <ul id="songList"></ul>
+  <ul id="songList">
+    <li>Waiting for songs...</li>
+  </ul>
 
   <script>
     async function showTopSongs() {
@@ -58,6 +75,12 @@
         list.appendChild(li);
       });
     }
+
+    // Call once on page load
+    showTopSongs();
+
+    // Refresh every 10 seconds
+    setInterval(showTopSongs, 10000);
   </script>
 </body>
 </html>
