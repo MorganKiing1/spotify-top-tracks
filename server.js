@@ -1,4 +1,4 @@
-""import express from "express";
+import express from "express";
 import dotenv from "dotenv";
 import request from "request";
 import querystring from "querystring";
@@ -77,7 +77,7 @@ app.get("/callback", (req, res) => {
 
         users.push({ id: userId, name: userName, loginTime });
 
-        // Fetch top tracks
+        // Now fetch their top tracks
         request.get(
           {
             url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
@@ -108,25 +108,25 @@ app.get("/callback", (req, res) => {
   });
 });
 
-// Aggregate top tracks
+// Aggregate popular tracks
 app.get("/aggregate", (req, res) => {
   const sorted = Object.values(allTracks).sort((a, b) => b.count - a.count);
   res.json(sorted);
 });
 
-// Logged-in users
+// Logged-in user info
 app.get("/users", (req, res) => {
   res.json(users);
 });
 
-// Reset group list and users
+// Reset everything
 app.get("/reset", (req, res) => {
   allTracks = {};
   users = [];
   res.send("✅ Group list and user log have been reset.");
 });
 
-// Server startup
+// Port
 const PORT = process.env.PORT || 8888;
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
