@@ -33,6 +33,12 @@
       color: #1db954;
       text-decoration: none;
     }
+    #userList {
+      margin-top: 30px;
+      text-align: left;
+      max-width: 400px;
+      margin-inline: auto;
+    }
   </style>
 </head>
 <body>
@@ -42,8 +48,12 @@
 
   <button onclick="window.location.href='/login'">Login with Spotify</button>
   <button onclick="loadPopularTracks()">Show Most Popular Songs</button>
+  <button onclick="loadUsers()">Show Logged In Users</button>
+  <button onclick="resetGroup()">Reset Group</button>
 
   <ul id="trackList"></ul>
+
+  <div id="userList"></div>
 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
@@ -69,15 +79,44 @@
           list.appendChild(item);
         });
 
-        if (data.length === 0) {
-          document.getElementById("status").innerText = "⚠️ No tracks in group yet.";
-        } else {
-          document.getElementById("status").innerText = `🎉 Showing top ${data.length} songs!`;
-        }
+        document.getElementById("status").innerText = data.length
+          ? `🎉 Showing top ${data.length} songs!`
+          : "⚠️ No tracks in group yet.";
 
       } catch (e) {
         console.error("Error loading aggregate tracks", e);
         document.getElementById("status").innerText = "❌ Failed to load tracks.";
+      }
+    }
+
+    async function loadUsers() {
+      try {
+        const res = await fetch('/users');
+        const data = await res.json();
+        const list = document.getElementById("userList");
+
+        if (!Array.isArray(data) || data.length === 0) {
+          list.innerHTML = "<p>⚠️ No users have logged in yet.</p>";
+          return;
+        }
+
+        list.innerHTML = "<h3>👥 Logged In Users:</h3><ul>" + data.map(user => `<li>${user}</li>`).join('') + "</ul>";
+      } catch (e) {
+        console.error("Error loading users", e);
+        document.getElementById("userList").innerHTML = "<p>❌ Failed to load user list.</p>";
+      }
+    }
+
+    async function resetGroup() {
+      if (!confirm("Are you sure you want to reset all user data and tracks?")) return;
+      try {
+        await fetch('/reset');
+        document.getElementById("status").innerText = "❌ Group data reset.";
+        document.getElementById("trackList").innerHTML = "";
+        document.getElementById("userList").innerHTML = "";
+      } catch (e) {
+        console.error("Error resetting group", e);
+        document.getElementById("status").innerText = "❌ Failed to reset group.";
       }
     }
   </script>
