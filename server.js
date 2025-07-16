@@ -1,11 +1,13 @@
+// server.js
 import express from "express";
 import dotenv from "dotenv";
 import request from "request";
 import querystring from "querystring";
 import cors from "cors";
-import { v4 as uuidv4 } from "uuid";
 
+// Load environment variables
 dotenv.config();
+
 const app = express();
 app.use(cors());
 app.use(express.static("public"));
@@ -14,28 +16,37 @@ const client_id = process.env.SPOTIFY_CLIENT_ID;
 const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 const redirect_uri = process.env.REDIRECT_URI;
 
-const userTracks = {}; // Store tracks per user
+const groupTopTracks = []; // Shared group list for all users
 
+// ✅ Homepage
 app.get("/", (req, res) => {
   res.sendFile("index.html", { root: "public" });
 });
 
+// 🔐 Login
 app.get("/login", (req, res) => {
   const scope = "user-top-read";
-  const state = uuidv4();
-  const queryParams = querystring.stringify({
+  const auth_query_params = querystring.stringify({
     response_type: "code",
     client_id,
     scope,
     redirect_uri,
-    state,
   });
 
-  res.redirect(`https://accounts.spotify.com/authorize?${queryParams}`);
+  const fullURL = `https://accounts.spotify.com/authorize?${auth_query_params}`;
+  console.log("🔁 Using redirect URI:", redirect_uri);
+  console.log("📡 Final login URL to Spotify:", fullURL);
+
+  res.redirect(fullURL);
 });
 
+// 🎯 Callback
 app.get("/callback", (req, res) => {
   const code = req.query.code || null;
+  if (!code) {
+    console.error("❌ No code received in callback.");
+    return res.status(400).send("No code received from Spotify.");
+  }
 
   const authOptions = {
     url: "https://accounts.spotify.com/api/token",
@@ -53,13 +64,14 @@ app.get("/callback", (req, res) => {
 
   request.post(authOptions, (error, response, body) => {
     if (error || response.statusCode !== 200) {
-      console.error("Token error:", error || body);
-      return res.status(400).send("❌ Failed to get access token");
+      console.error("❌ Failed to exchange code for token.", body);
+      return res.status(response.statusCode).send("❌ Failed to get access token");
     }
 
     const access_token = body.access_token;
+    console.log("✅ Access token received");
 
-    // Fetch user's top tracks now
+    // Fetch user's top tracks
     const options = {
       url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
       headers: { Authorization: `Bearer ${access_token}` },
@@ -67,45 +79,43 @@ app.get("/callback", (req, res) => {
     };
 
     request.get(options, (err, resp, data) => {
-      if (err || !data.items) {
-        console.error("❌ Failed to fetch top tracks:", err || data);
-        return res.redirect("/?added=false");
+      if (err || data.error) {
+        console.error("❌ Error fetching top tracks:", err || data.error);
+        return res.status(500).send("Failed to fetch top tracks");
       }
 
-      const userId = uuidv4();
-      userTracks[userId] = data.items.map((track) => ({
-        name: track.name,
-        artists: track.artists.map((a) => a.name).join(", "),
-        url: track.external_urls.spotify,
+      const userTracks = data.items.map(track => ({
         id: track.id,
+        name: track.name,
+        artists: track.artists.map(a => a.name).join(", "),
+        url: track.external_urls.spotify,
       }));
 
-      console.log(`✅ Stored tracks for user ${userId}`);
+      // Add to shared group list
+      groupTopTracks.push(...userTracks);
+      console.log(`✅ Added ${userTracks.length} tracks to group list`);
+
       res.redirect("/?added=true");
     });
   });
 });
 
+// 🎵 Aggregate endpoint
 app.get("/aggregate", (req, res) => {
-  const allTracks = {};
+  const countMap = {};
+  for (const track of groupTopTracks) {
+    const key = track.id;
+    if (!countMap[key]) {
+      countMap[key] = { ...track, count: 0 };
+    }
+    countMap[key].count += 1;
+  }
 
-  Object.values(userTracks).forEach((tracks) => {
-    tracks.forEach((track) => {
-      if (!allTracks[track.id]) {
-        allTracks[track.id] = { ...track, count: 1 };
-      } else {
-        allTracks[track.id].count++;
-      }
-    });
-  });
-
-  const sorted = Object.values(allTracks)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 50);
-
+  const sorted = Object.values(countMap).sort((a, b) => b.count - a.count);
   res.json(sorted);
 });
 
+// ✅ Start server
 const PORT = process.env.PORT || 8888;
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
