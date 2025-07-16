@@ -4,27 +4,26 @@ import request from "request";
 import querystring from "querystring";
 import cors from "cors";
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.static("public"));
 
+// Spotify credentials
 const client_id = process.env.SPOTIFY_CLIENT_ID;
 const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 const redirect_uri = process.env.REDIRECT_URI;
 
-// Diagnostics: log what's loaded
-console.log("🟢 Loaded SPOTIFY_CLIENT_ID:", client_id);
-console.log("🟢 Loaded REDIRECT_URI:", redirect_uri);
+// In-memory store for all users' top tracks
+let groupTracks = [];
 
-// ✅ Homepage
+// Root
 app.get("/", (req, res) => {
-  res.send("🎵 Spotify Party App backend is running.");
+  res.sendFile(__dirname + "/public/index.html");
 });
 
-// 🔐 Login
+// Login
 app.get("/login", (req, res) => {
   const scope = "user-top-read";
   const auth_query_params = querystring.stringify({
@@ -34,20 +33,13 @@ app.get("/login", (req, res) => {
     redirect_uri,
   });
 
-  const fullURL = `https://accounts.spotify.com/authorize?${auth_query_params}`;
-  console.log("🔁 Using redirect URI:", redirect_uri);
-  console.log("📡 Final login URL to Spotify:", fullURL);
-
-  res.redirect(fullURL);
+  console.log("🔁 Redirecting to Spotify:", redirect_uri);
+  res.redirect(`https://accounts.spotify.com/authorize?${auth_query_params}`);
 });
 
-// 🎯 Callback
+// Callback after login
 app.get("/callback", (req, res) => {
   const code = req.query.code || null;
-  if (!code) {
-    console.error("❌ No code received in callback.");
-    return res.status(400).send("No code received from Spotify.");
-  }
 
   const authOptions = {
     url: "https://accounts.spotify.com/api/token",
@@ -65,40 +57,52 @@ app.get("/callback", (req, res) => {
 
   request.post(authOptions, (error, response, body) => {
     if (error || response.statusCode !== 200) {
-      console.error("❌ Failed to exchange code for token.");
-      console.error("Status:", response.statusCode);
-      console.error("Error:", error);
-      console.error("Response Body:", body);
-      return res.status(response.statusCode).send("❌ Failed to get access token");
+      console.error("❌ Failed to get access token:", body);
+      return res.status(response.statusCode).send("Failed to get token");
     }
 
     const access_token = body.access_token;
-    console.log("✅ Access token received");
-    res.redirect("/#access_token=" + access_token);
+
+    const options = {
+      url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
+      headers: { Authorization: `Bearer ${access_token}` },
+      json: true,
+    };
+
+    request.get(options, (err, resp, trackData) => {
+      if (err || !trackData.items) {
+        console.error("❌ Failed to fetch tracks");
+        return res.status(500).send("Error fetching tracks");
+      }
+
+      // Store track data in memory
+      trackData.items.forEach((track) => {
+        const existing = groupTracks.find(t => t.id === track.id);
+        if (existing) {
+          existing.count++;
+        } else {
+          groupTracks.push({
+            id: track.id,
+            name: track.name,
+            artists: track.artists.map(a => a.name).join(", "),
+            url: track.external_urls.spotify,
+            count: 1
+          });
+        }
+      });
+
+      console.log("✅ User tracks added. Total group tracks:", groupTracks.length);
+      res.redirect("/?added=true");
+    });
   });
 });
 
-// 🎵 Top tracks route (optional)
-app.get("/top-tracks", (req, res) => {
-  const access_token = req.query.access_token;
-  if (!access_token) {
-    return res.status(400).json({ error: "Missing access_token" });
-  }
-
-  const options = {
-    url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
-    headers: { Authorization: `Bearer ${access_token}` },
-    json: true,
-  };
-
-  request.get(options, (error, response, body) => {
-    if (error) {
-      console.error("❌ Error fetching top tracks:", error);
-      return res.status(500).json({ error: "Failed to fetch top tracks" });
-    }
-
-    res.json(body);
-  });
+// Aggregate route
+app.get("/aggregate", (req, res) => {
+  const sorted = groupTracks
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 50); // top 50 by popularity
+  res.json(sorted);
 });
 
 // Start server
