@@ -1,11 +1,11 @@
-// server.js
-import express from "express";
+""import express from "express";
 import dotenv from "dotenv";
 import request from "request";
 import querystring from "querystring";
 import cors from "cors";
+import { v4 as uuidv4 } from "uuid";
 
-// Load env vars
+// Load environment variables
 dotenv.config();
 
 const app = express();
@@ -16,19 +16,18 @@ const client_id = process.env.SPOTIFY_CLIENT_ID;
 const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 const redirect_uri = process.env.REDIRECT_URI;
 
-console.log("\uD83D\uDFE2 Loaded SPOTIFY_CLIENT_ID:", client_id);
-console.log("\uD83D\uDFE2 Loaded REDIRECT_URI:", redirect_uri);
+// In-memory storage
+let allTracks = {}; // { trackId: { name, artists, url, count } }
+let users = [];     // [{ id, name, loginTime }]
 
-const groupTracks = []; // All users' tracks
-const loggedUsers = []; // Names & times
-
+// Root page
 app.get("/", (req, res) => {
   res.sendFile("index.html", { root: "public" });
 });
 
 // Login
 app.get("/login", (req, res) => {
-  const scope = "user-top-read";
+  const scope = "user-top-read user-read-private";
   const auth_query_params = querystring.stringify({
     response_type: "code",
     client_id,
@@ -36,16 +35,12 @@ app.get("/login", (req, res) => {
     redirect_uri,
   });
 
-  const loginURL = `https://accounts.spotify.com/authorize?${auth_query_params}`;
-  console.log("\uD83D\uDD01 Redirecting to Spotify:", loginURL);
-
-  res.redirect(loginURL);
+  res.redirect(`https://accounts.spotify.com/authorize?${auth_query_params}`);
 });
 
-// Callback
+// Callback from Spotify
 app.get("/callback", (req, res) => {
   const code = req.query.code || null;
-  if (!code) return res.status(400).send("Missing code");
 
   const authOptions = {
     url: "https://accounts.spotify.com/api/token",
@@ -63,87 +58,75 @@ app.get("/callback", (req, res) => {
 
   request.post(authOptions, (error, response, body) => {
     if (error || response.statusCode !== 200) {
-      console.error("❌ Token error:", error || body);
-      return res.redirect("/?added=false");
+      return res.status(400).send("Failed to get access token");
     }
 
     const access_token = body.access_token;
 
-    const profileOptions = {
-      url: "https://api.spotify.com/v1/me",
-      headers: { Authorization: `Bearer ${access_token}` },
-      json: true,
-    };
-
-    request.get(profileOptions, (err, resp, profile) => {
-      if (err || resp.statusCode !== 200) {
-        console.error("❌ Profile error:", err || profile);
-        return res.redirect("/?added=false");
-      }
-
-      const displayName = profile.display_name || profile.id || "Anonymous";
-      const loginTime = new Date().toLocaleString();
-
-      const trackOptions = {
-        url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
+    // Get user profile name
+    request.get(
+      {
+        url: "https://api.spotify.com/v1/me",
         headers: { Authorization: `Bearer ${access_token}` },
         json: true,
-      };
+      },
+      (err, resp, userBody) => {
+        const userName = userBody.display_name || "Unknown User";
+        const userId = uuidv4();
+        const loginTime = new Date().toLocaleString();
 
-      request.get(trackOptions, (err, resp, trackBody) => {
-        if (err || resp.statusCode !== 200 || !trackBody.items) {
-          console.error("❌ Track fetch error:", err || trackBody);
-          return res.redirect("/?added=false");
-        }
+        users.push({ id: userId, name: userName, loginTime });
 
-        const userTracks = trackBody.items.map((track) => ({
-          id: track.id,
-          name: track.name,
-          artists: track.artists.map((a) => a.name).join(", "),
-          url: track.external_urls.spotify,
-        }));
+        // Fetch top tracks
+        request.get(
+          {
+            url: "https://api.spotify.com/v1/me/top/tracks?limit=50",
+            headers: { Authorization: `Bearer ${access_token}` },
+            json: true,
+          },
+          (err2, resp2, tracksBody) => {
+            if (Array.isArray(tracksBody.items)) {
+              tracksBody.items.forEach((track) => {
+                const id = track.id;
+                if (!allTracks[id]) {
+                  allTracks[id] = {
+                    name: track.name,
+                    artists: track.artists.map((a) => a.name).join(", "),
+                    url: track.external_urls.spotify,
+                    count: 0,
+                  };
+                }
+                allTracks[id].count++;
+              });
+            }
 
-        groupTracks.push(...userTracks);
-
-        loggedUsers.push({ name: displayName, time: loginTime });
-
-        return res.redirect("/?added=true");
-      });
-    });
+            res.redirect("/?added=true");
+          }
+        );
+      }
+    );
   });
 });
 
-// Aggregate
+// Aggregate top tracks
 app.get("/aggregate", (req, res) => {
-  const countMap = {};
-
-  groupTracks.forEach((track) => {
-    const key = track.id;
-    if (!countMap[key]) {
-      countMap[key] = { ...track, count: 1 };
-    } else {
-      countMap[key].count++;
-    }
-  });
-
-  const sorted = Object.values(countMap).sort((a, b) => b.count - a.count);
+  const sorted = Object.values(allTracks).sort((a, b) => b.count - a.count);
   res.json(sorted);
 });
 
-// Users list
+// Logged-in users
 app.get("/users", (req, res) => {
-  res.json(
-    loggedUsers.map((u, index) => `#${index + 1}: ${u.name} (Logged in at ${u.time})`)
-  );
+  res.json(users);
 });
 
-// Reset list
+// Reset group list and users
 app.get("/reset", (req, res) => {
-  groupTracks.length = 0;
-  loggedUsers.length = 0;
-  res.json({ success: true, message: "Group list reset." });
+  allTracks = {};
+  users = [];
+  res.send("✅ Group list and user log have been reset.");
 });
 
+// Server startup
 const PORT = process.env.PORT || 8888;
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
