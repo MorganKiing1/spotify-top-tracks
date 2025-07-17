@@ -16,9 +16,9 @@ const client_id = process.env.SPOTIFY_CLIENT_ID;
 const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 const redirect_uri = process.env.REDIRECT_URI;
 
-const userStore = new Map(); // userId -> { displayName, loginTime }
-const songCounts = new Map(); // trackId -> { name, artists, url, count }
-const userTracks = new Map(); // userId -> [ { name, artists, url } ]
+const userStore = new Map();
+const songCounts = new Map();
+const userTracks = new Map();
 
 app.get("/", (req, res) => {
   res.sendFile("index.html", { root: "public" });
@@ -39,81 +39,86 @@ app.get("/login", (req, res) => {
 });
 
 app.get("/callback", async (req, res) => {
-  const code = req.query.code || null;
+  try {
+    const code = req.query.code || null;
 
-  const tokenResponse = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      Authorization:
-        "Basic " +
-        Buffer.from(`${client_id}:${client_secret}`).toString("base64"),
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: querystring.stringify({
-      code,
-      redirect_uri,
-      grant_type: "authorization_code",
-    }),
-  });
+    const tokenResponse = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        Authorization:
+          "Basic " +
+          Buffer.from(`${client_id}:${client_secret}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: querystring.stringify({
+        code,
+        redirect_uri,
+        grant_type: "authorization_code",
+      }),
+    });
 
-  if (!tokenResponse.ok) {
-    console.error("❌ Failed to get access token");
-    return res.status(400).send("Failed to get access token");
-  }
-
-  const { access_token } = await tokenResponse.json();
-
-  const profileResp = await fetch("https://api.spotify.com/v1/me", {
-    headers: { Authorization: `Bearer ${access_token}` },
-  });
-
-  if (!profileResp.ok) {
-    console.error("❌ Failed to fetch user profile");
-    return res.status(400).send("Failed to fetch profile");
-  }
-
-  const profile = await profileResp.json();
-  const userId = profile.id || uuidv4();
-  const displayName = profile.display_name || "Anonymous";
-  const loginTime = new Date().toLocaleString();
-  userStore.set(userId, { displayName, loginTime });
-
-  const topTracksResp = await fetch(
-    "https://api.spotify.com/v1/me/top/tracks?limit=50",
-    {
-      headers: { Authorization: `Bearer ${access_token}` },
+    if (!tokenResponse.ok) {
+      console.error("❌ Failed to get access token");
+      return res.status(400).send("Failed to get access token");
     }
-  );
 
-  if (!topTracksResp.ok) {
-    console.error("❌ Failed to fetch top tracks");
-    return res.status(400).send("Failed to fetch top tracks");
-  }
+    const { access_token } = await tokenResponse.json();
 
-  const { items } = await topTracksResp.json();
-  const userTop = [];
+    const profileResp = await fetch("https://api.spotify.com/v1/me", {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
 
-  for (const track of items) {
-    const key = track.id;
-    if (!songCounts.has(key)) {
-      songCounts.set(key, {
+    if (!profileResp.ok) {
+      console.error("❌ Failed to fetch user profile");
+      return res.status(400).send("Failed to fetch profile");
+    }
+
+    const profile = await profileResp.json();
+    const userId = profile.id || uuidv4();
+    const displayName = profile.display_name || "Anonymous";
+    const loginTime = new Date().toLocaleString();
+    userStore.set(userId, { displayName, loginTime });
+
+    const topTracksResp = await fetch(
+      "https://api.spotify.com/v1/me/top/tracks?limit=50",
+      {
+        headers: { Authorization: `Bearer ${access_token}` },
+      }
+    );
+
+    if (!topTracksResp.ok) {
+      console.error("❌ Failed to fetch top tracks");
+      return res.status(400).send("Failed to fetch top tracks");
+    }
+
+    const { items } = await topTracksResp.json();
+    const userTop = [];
+
+    for (const track of items) {
+      const key = track.id;
+      if (!songCounts.has(key)) {
+        songCounts.set(key, {
+          name: track.name,
+          artists: track.artists.map((a) => a.name).join(", "),
+          url: track.external_urls.spotify,
+          count: 0,
+        });
+      }
+      songCounts.get(key).count++;
+
+      userTop.push({
         name: track.name,
         artists: track.artists.map((a) => a.name).join(", "),
         url: track.external_urls.spotify,
-        count: 0,
       });
     }
-    songCounts.get(key).count++;
 
-    userTop.push({
-      name: track.name,
-      artists: track.artists.map((a) => a.name).join(", "),
-      url: track.external_urls.spotify,
-    });
+    userTracks.set(userId, userTop);
+    res.redirect("/?added=true");
+  } catch (error) {
+    console.error("🔥 Error in /callback:", error);
+    res.status(500).send("Something went wrong during login.");
   }
-
-  userTracks.set(userId, userTop);
-  res.redirect("/?added=true");
 });
 
 app.get("/aggregate", (req, res) => {
@@ -143,6 +148,11 @@ app.post("/reset", (req, res) => {
   songCounts.clear();
   userTracks.clear();
   res.send("✅ Group list and user log have been reset.");
+});
+
+// Catch unhandled promise errors to prevent crashes
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("🧨 Unhandled Rejection:", reason);
 });
 
 const PORT = process.env.PORT || 8888;
