@@ -1,83 +1,102 @@
-<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Spotify Party Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎵 Spotify Party Tracks</title>
   <style>
     body {
       font-family: sans-serif;
-      background: #121212;
+      background-color: #121212;
       color: white;
-      padding: 30px;
-    }
-    h1 {
-      color: #1db954;
+      text-align: center;
+      padding: 40px;
     }
     button {
       padding: 10px 20px;
-      margin: 10px 5px;
-      font-size: 16px;
+      margin: 10px;
       background: #1db954;
-      color: white;
       border: none;
-      border-radius: 5px;
+      color: white;
+      font-size: 16px;
+      border-radius: 4px;
       cursor: pointer;
     }
-    .user-block {
-      margin-bottom: 30px;
-      padding: 15px;
-      border: 1px solid #1db954;
-      border-radius: 10px;
+    ul {
+      list-style-type: none;
+      padding: 0;
     }
-    .track-list {
-      margin-top: 10px;
-      padding-left: 20px;
+    li {
+      margin: 10px 0;
     }
-    .track-list li {
-      margin: 5px 0;
+    a {
+      color: #1db954;
     }
   </style>
 </head>
 <body>
-  <h1>🎵 Spotify Party Viewer</h1>
+  <h1>🎵 Spotify Party Tracks</h1>
+  <p id="status"></p>
   <button onclick="window.location.href='/login'">Login with Spotify</button>
+  <button onclick="loadPopularTracks()">Show Most Popular Songs</button>
   <button onclick="loadUsers()">Show Logged In Users</button>
+  <button onclick="resetGroup()">Reset Group List</button>
 
-  <div id="userContainer"></div>
+  <h2>Top Tracks</h2>
+  <ul id="trackList"></ul>
+
+  <h2>Logged In Users</h2>
+  <ul id="userList"></ul>
 
   <script>
+    const statusText = document.getElementById("status");
+
+    if (new URLSearchParams(window.location.search).get("added") === "true") {
+      statusText.innerText = "✅ Your tracks have been added to the group list!";
+    }
+
+    async function loadPopularTracks() {
+      const res = await fetch("/aggregate");
+      const data = await res.json();
+
+      const list = document.getElementById("trackList");
+      list.innerHTML = "";
+
+      if (!Array.isArray(data) || data.length === 0) {
+        statusText.innerText = "⚠️ No tracks in group yet.";
+        return;
+      }
+
+      data.forEach((track, index) => {
+        const item = document.createElement("li");
+        item.innerHTML = `<strong>#${index + 1}</strong> - ${track.name} by ${track.artists} (<a href="${track.url}" target="_blank">Play</a>) - ⭐ ${track.count}`;
+        list.appendChild(item);
+      });
+
+      statusText.innerText = `🎉 Showing top ${data.length} songs!`;
+    }
+
     async function loadUsers() {
       const res = await fetch("/users");
       const users = await res.json();
 
-      const container = document.getElementById("userContainer");
-      container.innerHTML = "";
-
-      if (users.length === 0) {
-        container.innerHTML = "<p>No users have logged in yet.</p>";
-        return;
-      }
-
-      users.forEach((user, i) => {
-        const userDiv = document.createElement("div");
-        userDiv.className = "user-block";
-
-        const name = document.createElement("h2");
-        name.textContent = `#${i + 1}: ${user.name} (Logged in at ${user.loginTime})`;
-        userDiv.appendChild(name);
-
-        const trackList = document.createElement("ul");
-        trackList.className = "track-list";
-        user.topTracks.forEach(track => {
-          const li = document.createElement("li");
-          li.innerHTML = `${track.name} by ${track.artists} - <a href="${track.url}" target="_blank">Play</a>`;
-          trackList.appendChild(li);
-        });
-
-        userDiv.appendChild(trackList);
-        container.appendChild(userDiv);
+      const userList = document.getElementById("userList");
+      userList.innerHTML = "";
+      users.forEach((user, index) => {
+        const item = document.createElement("li");
+        item.textContent = `#${index + 1}: ${user}`;
+        userList.appendChild(item);
       });
+    }
+
+    async function resetGroup() {
+      const confirmed = confirm("Are you sure you want to reset all data?");
+      if (!confirmed) return;
+
+      await fetch("/reset", { method: "POST" });
+      statusText.innerText = "❌ Group data has been reset.";
+      document.getElementById("trackList").innerHTML = "";
+      document.getElementById("userList").innerHTML = "";
     }
   </script>
 </body>
