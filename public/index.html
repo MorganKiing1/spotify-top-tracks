@@ -32,13 +32,19 @@
     a {
       color: #1db954;
     }
+    h3 {
+      margin-top: 20px;
+      color: #1db954;
+    }
   </style>
 </head>
 <body>
   <h1>🎵 Spotify Party Tracks</h1>
   <p id="status"></p>
+
   <button onclick="window.location.href='/login'">Login with Spotify</button>
   <button onclick="loadPopularTracks()">Show Most Popular Songs</button>
+  <button onclick="loadUserTracks()">Show Each User's Top Tracks</button>
   <button onclick="loadUsers()">Show Logged In Users</button>
   <button onclick="resetGroup()">Reset Group List</button>
 
@@ -76,6 +82,33 @@
       statusText.innerText = `🎉 Showing top ${data.length} songs!`;
     }
 
+    async function loadUserTracks() {
+      const res = await fetch("/user-tracks");
+      const data = await res.json();
+
+      const list = document.getElementById("trackList");
+      list.innerHTML = "";
+
+      if (!Array.isArray(data) || data.length === 0) {
+        statusText.innerText = "⚠️ No user tracks available yet.";
+        return;
+      }
+
+      data.forEach(user => {
+        const header = document.createElement("li");
+        header.innerHTML = `<h3>🎧 ${user.user}</h3>`;
+        list.appendChild(header);
+
+        user.tracks.forEach((track, i) => {
+          const item = document.createElement("li");
+          item.innerHTML = `#${i + 1} - ${track.name} by ${track.artists} (<a href="${track.url}" target="_blank">Play</a>)`;
+          list.appendChild(item);
+        });
+      });
+
+      statusText.innerText = "🎶 Showing all users' individual top tracks!";
+    }
+
     async function loadUsers() {
       const res = await fetch("/users");
       const users = await res.json();
@@ -84,7 +117,7 @@
       userList.innerHTML = "";
       users.forEach((user, index) => {
         const item = document.createElement("li");
-        item.textContent = `#${index + 1}: ${user}`;
+        item.textContent = user;
         userList.appendChild(item);
       });
     }
