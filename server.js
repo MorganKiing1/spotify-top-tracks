@@ -1,161 +1,94 @@
 import express from "express";
 import dotenv from "dotenv";
-import fetch from "node-fetch";
+import request from "request";
 import querystring from "querystring";
 import cors from "cors";
-import { v4 as uuidv4 } from "uuid";
 
+// Load environment variables
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.static("public"));
-app.use(express.json());
 
+// Environment variables
 const client_id = process.env.SPOTIFY_CLIENT_ID;
 const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 const redirect_uri = process.env.REDIRECT_URI;
 
-const userStore = new Map();
-const songCounts = new Map();
-const userTracks = new Map();
-
+// Root route to show the app is alive
 app.get("/", (req, res) => {
-  res.sendFile("index.html", { root: "public" });
+  res.send("✅ Spotify Top Tracks backend is running.");
 });
 
+// Login route: sends user to Spotify login
 app.get("/login", (req, res) => {
-  const state = uuidv4();
-  const scope = "user-top-read user-read-private";
+  const scope = "user-top-read";
   const auth_query_params = querystring.stringify({
     response_type: "code",
     client_id,
     scope,
     redirect_uri,
-    state,
   });
+
+  // Log for debugging
+  console.log("➡️ Login route hit");
+  console.log("Redirect URI used for Spotify authorization:", redirect_uri);
+  console.log(`Full Spotify Auth URL: https://accounts.spotify.com/authorize?${auth_query_params}`);
 
   res.redirect(`https://accounts.spotify.com/authorize?${auth_query_params}`);
 });
 
-app.get("/callback", async (req, res) => {
-  try {
-    const code = req.query.code || null;
+// Callback route: Spotify redirects here after login
+app.get("/callback", (req, res) => {
+  const code = req.query.code || null;
 
-    const tokenResponse = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        Authorization:
-          "Basic " +
-          Buffer.from(`${client_id}:${client_secret}`).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: querystring.stringify({
-        code,
-        redirect_uri,
-        grant_type: "authorization_code",
-      }),
-    });
+  const authOptions = {
+    url: "https://accounts.spotify.com/api/token",
+    form: {
+      code,
+      redirect_uri,
+      grant_type: "authorization_code",
+    },
+    headers: {
+      Authorization:
+        "Basic " + Buffer.from(client_id + ":" + client_secret).toString("base64"),
+    },
+    json: true,
+  };
 
-    if (!tokenResponse.ok) {
-      console.error("❌ Failed to get access token");
-      return res.status(400).send("Failed to get access token");
+  request.post(authOptions, (error, response, body) => {
+    if (error || response.statusCode !== 200) {
+      console.error("❌ Error fetching access token", error || body);
+      return res.status(response.statusCode).json({ error: "Failed to get access token" });
     }
 
-    const { access_token } = await tokenResponse.json();
-
-    const profileResp = await fetch("https://api.spotify.com/v1/me", {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
-
-    if (!profileResp.ok) {
-      console.error("❌ Failed to fetch user profile");
-      return res.status(400).send("Failed to fetch profile");
-    }
-
-    const profile = await profileResp.json();
-    const userId = profile.id || uuidv4();
-    const displayName = profile.display_name || "Anonymous";
-    const loginTime = new Date().toLocaleString();
-    userStore.set(userId, { displayName, loginTime });
-
-    const topTracksResp = await fetch(
-      "https://api.spotify.com/v1/me/top/tracks?limit=50",
-      {
-        headers: { Authorization: `Bearer ${access_token}` },
-      }
-    );
-
-    if (!topTracksResp.ok) {
-      console.error("❌ Failed to fetch top tracks");
-      return res.status(400).send("Failed to fetch top tracks");
-    }
-
-    const { items } = await topTracksResp.json();
-    const userTop = [];
-
-    for (const track of items) {
-      const key = track.id;
-      if (!songCounts.has(key)) {
-        songCounts.set(key, {
-          name: track.name,
-          artists: track.artists.map((a) => a.name).join(", "),
-          url: track.external_urls.spotify,
-          count: 0,
-        });
-      }
-      songCounts.get(key).count++;
-
-      userTop.push({
-        name: track.name,
-        artists: track.artists.map((a) => a.name).join(", "),
-        url: track.external_urls.spotify,
-      });
-    }
-
-    userTracks.set(userId, userTop);
-    res.redirect("/?added=true");
-  } catch (error) {
-    console.error("🔥 Error in /callback:", error);
-    res.status(500).send("Something went wrong during login.");
-  }
-});
-
-app.get("/aggregate", (req, res) => {
-  const aggregated = Array.from(songCounts.values()).sort(
-    (a, b) => b.count - a.count
-  );
-  res.json(aggregated);
-});
-
-app.get("/user-tracks", (req, res) => {
-  const result = Array.from(userTracks.entries()).map(([userId, tracks]) => {
-    const user = userStore.get(userId);
-    return { user: user?.displayName || "Unknown", tracks };
+    const access_token = body.access_token;
+    console.log("✅ Access token received");
+    res.redirect("/#access_token=" + access_token);
   });
-  res.json(result);
 });
 
-app.get("/users", (req, res) => {
-  const users = Array.from(userStore.values()).map(
-    (u, i) => `#${i + 1}: ${u.displayName} (Logged in at ${u.loginTime})`
-  );
-  res.json(users);
+// Top Tracks route: fetches user's top tracks using the access token
+app.get("/top-tracks", (req, res) => {
+  const access_token = req.query.access_token;
+  const options = {
+    url: "https://api.spotify.com/v1/me/top/tracks?limit=100",
+    headers: { Authorization: "Bearer " + access_token },
+    json: true,
+  };
+
+  request.get(options, (error, response, body) => {
+    if (error) {
+      console.error("❌ Error fetching top tracks", error);
+      return res.status(500).json({ error: "Failed to fetch top tracks" });
+    }
+    res.json(body);
+  });
 });
 
-app.post("/reset", (req, res) => {
-  userStore.clear();
-  songCounts.clear();
-  userTracks.clear();
-  res.send("✅ Group list and user log have been reset.");
-});
-
-// Catch unhandled promise errors to prevent crashes
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("🧨 Unhandled Rejection:", reason);
-});
-
+// Start the server on Replit's port or default to 8888
 const PORT = process.env.PORT || 8888;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
