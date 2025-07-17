@@ -3,100 +3,123 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🎵 Spotify Party Tracks</title>
+  <title>🎵 Spotify Group Tracks</title>
   <style>
     body {
-      font-family: sans-serif;
-      background-color: #121212;
+      font-family: Arial, sans-serif;
+      background: #121212;
       color: white;
+      padding: 30px;
+    }
+    h1 {
       text-align: center;
-      padding: 40px;
+      color: #1db954;
     }
     button {
-      padding: 10px 20px;
-      margin: 10px;
       background: #1db954;
-      border: none;
       color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 10px 5px;
       font-size: 16px;
-      border-radius: 4px;
+      border-radius: 5px;
       cursor: pointer;
     }
+    .user-block {
+      margin-top: 20px;
+      border: 1px solid #1db954;
+      border-radius: 10px;
+      padding: 15px;
+    }
+    .user-block h3 {
+      margin-bottom: 10px;
+    }
     ul {
-      list-style-type: none;
-      padding: 0;
+      list-style: none;
+      padding-left: 0;
     }
     li {
-      margin: 10px 0;
+      margin: 5px 0;
     }
-    a {
-      color: #1db954;
+    .aggregate {
+      margin-top: 30px;
     }
   </style>
 </head>
 <body>
-  <h1>🎵 Spotify Party Tracks</h1>
-  <p id="status"></p>
-  <button onclick="window.location.href='/login'">Login with Spotify</button>
-  <button onclick="loadPopularTracks()">Show Most Popular Songs</button>
-  <button onclick="loadUsers()">Show Logged In Users</button>
-  <button onclick="resetGroup()">Reset Group List</button>
+  <h1>🎵 Spotify Group Tracks</h1>
 
-  <h2>Top Tracks</h2>
-  <ul id="trackList"></ul>
+  <div style="text-align:center">
+    <button onclick="window.location.href='/login'">Login with Spotify</button>
+    <button onclick="loadUsers()">Show Logged In Users</button>
+    <button onclick="loadAggregate()">Show Group Top 50</button>
+    <button onclick="resetAll()">Reset Group</button>
+  </div>
 
-  <h2>Logged In Users</h2>
-  <ul id="userList"></ul>
+  <div id="usersContainer"></div>
+  <div id="aggregateContainer" class="aggregate"></div>
 
   <script>
-    const statusText = document.getElementById("status");
+    async function loadUsers() {
+      const res = await fetch('/users');
+      const users = await res.json();
+      const container = document.getElementById("usersContainer");
+      container.innerHTML = "";
 
-    if (new URLSearchParams(window.location.search).get("added") === "true") {
-      statusText.innerText = "✅ Your tracks have been added to the group list!";
-    }
-
-    async function loadPopularTracks() {
-      const res = await fetch("/aggregate");
-      const data = await res.json();
-
-      const list = document.getElementById("trackList");
-      list.innerHTML = "";
-
-      if (!Array.isArray(data) || data.length === 0) {
-        statusText.innerText = "⚠️ No tracks in group yet.";
+      if (!Array.isArray(users) || users.length === 0) {
+        container.innerHTML = "<p style='text-align:center'>⚠️ No users logged in yet.</p>";
         return;
       }
 
-      data.forEach((track, index) => {
-        const item = document.createElement("li");
-        item.innerHTML = `<strong>#${index + 1}</strong> - ${track.name} by ${track.artists} (<a href="${track.url}" target="_blank">Play</a>) - ⭐ ${track.count}`;
-        list.appendChild(item);
-      });
+      users.forEach((user, idx) => {
+        const block = document.createElement("div");
+        block.className = "user-block";
 
-      statusText.innerText = `🎉 Showing top ${data.length} songs!`;
+        block.innerHTML = `<h3>#${idx + 1}: ${user.name} <small>(Logged in at ${user.time})</small></h3>`;
+
+        if (user.tracks && user.tracks.length > 0) {
+          const ul = document.createElement("ul");
+          user.tracks.forEach((track, i) => {
+            const li = document.createElement("li");
+            li.innerHTML = `<strong>#${i + 1}</strong> ${track.name} by ${track.artists} (<a href="${track.url}" target="_blank">Play</a>)`;
+            ul.appendChild(li);
+          });
+          block.appendChild(ul);
+        } else {
+          block.innerHTML += "<p>No tracks found.</p>";
+        }
+
+        container.appendChild(block);
+      });
     }
 
-    async function loadUsers() {
-      const res = await fetch("/users");
-      const users = await res.json();
+    async function loadAggregate() {
+      const res = await fetch('/aggregate');
+      const data = await res.json();
+      const container = document.getElementById("aggregateContainer");
+      container.innerHTML = "<h2>🎉 Group Top 50 Songs</h2>";
 
-      const userList = document.getElementById("userList");
-      userList.innerHTML = "";
-      users.forEach((user, index) => {
-        const item = document.createElement("li");
-        item.textContent = `#${index + 1}: ${user}`;
-        userList.appendChild(item);
+      if (!Array.isArray(data) || data.length === 0) {
+        container.innerHTML += "<p>No aggregate data yet.</p>";
+        return;
+      }
+
+      const ul = document.createElement("ul");
+      data.forEach((track, i) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<strong>#${i + 1}</strong> ${track.name} by ${track.artists} (<a href="${track.url}" target="_blank">Play</a>) - ⭐ ${track.count}`;
+        ul.appendChild(li);
       });
+      container.appendChild(ul);
     }
 
-    async function resetGroup() {
-      const confirmed = confirm("Are you sure you want to reset all data?");
-      if (!confirmed) return;
-
-      await fetch("/reset", { method: "POST" });
-      statusText.innerText = "❌ Group data has been reset.";
-      document.getElementById("trackList").innerHTML = "";
-      document.getElementById("userList").innerHTML = "";
+    async function resetAll() {
+      if (confirm("Are you sure you want to reset the group data?")) {
+        await fetch('/reset');
+        document.getElementById("usersContainer").innerHTML = "";
+        document.getElementById("aggregateContainer").innerHTML = "";
+        alert("Group data has been reset.");
+      }
     }
   </script>
 </body>
