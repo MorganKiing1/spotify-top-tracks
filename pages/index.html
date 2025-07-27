@@ -1,1 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎵 Spotify Party Tracks</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #121212;
+      color: white;
+      text-align: center;
+      padding: 40px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      background: #1db954;
+      border: none;
+      color: white;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    li {
+      margin: 10px 0;
+    }
+    a {
+      color: #1db954;
+    }
+    h3 {
+      margin-top: 20px;
+      color: #1db954;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎵 Spotify Party Tracks</h1>
+  <p id="status"></p>
 
+  <button onclick="window.location.href='/login'">Login with Spotify</button>
+  <button onclick="loadPopularTracks()">Show Most Popular Songs</button>
+  <button onclick="loadUserTracks()">Show Each User's Top Tracks</button>
+  <button onclick="loadUsers()">Show Logged In Users</button>
+  <button onclick="resetGroup()">Reset Group List</button>
+
+  <h2>Top Tracks</h2>
+  <ul id="trackList"></ul>
+
+  <h2>Logged In Users</h2>
+  <ul id="userList"></ul>
+
+  <script>
+    const statusText = document.getElementById("status");
+
+    if (new URLSearchParams(window.location.search).get("added") === "true") {
+      statusText.innerText = "✅ Your tracks have been added to the group list!";
+    }
+
+    async function loadPopularTracks() {
+      const res = await fetch("/aggregate");
+      const data = await res.json();
+
+      const list = document.getElementById("trackList");
+      list.innerHTML = "";
+
+      if (!Array.isArray(data) || data.length === 0) {
+        statusText.innerText = "⚠️ No tracks in group yet.";
+        return;
+      }
+
+      data.forEach((track, index) => {
+        const item = document.createElement("li");
+        item.innerHTML = `<strong>#${index + 1}</strong> - ${track.name} by ${track.artists} (<a href="${track.url}" target="_blank">Play</a>) - ⭐ ${track.count}`;
+        list.appendChild(item);
+      });
+
+      statusText.innerText = `🎉 Showing top ${data.length} songs!`;
+    }
+
+    async function loadUserTracks() {
+      const res = await fetch("/user-tracks");
+      const data = await res.json();
+
+      const list = document.getElementById("trackList");
+      list.innerHTML = "";
+
+      if (!Array.isArray(data) || data.length === 0) {
+        statusText.innerText = "⚠️ No user tracks available yet.";
+        return;
+      }
+
+      data.forEach(user => {
+        const header = document.createElement("li");
+        header.innerHTML = `<h3>🎧 ${user.user}</h3>`;
+        list.appendChild(header);
+
+        user.tracks.forEach((track, i) => {
+          const item = document.createElement("li");
+          item.innerHTML = `#${i + 1} - ${track.name} by ${track.artists} (<a href="${track.url}" target="_blank">Play</a>)`;
+          list.appendChild(item);
+        });
+      });
+
+      statusText.innerText = "🎶 Showing all users' individual top tracks!";
+    }
+
+    async function loadUsers() {
+      const res = await fetch("/users");
+      const users = await res.json();
+
+      const userList = document.getElementById("userList");
+      userList.innerHTML = "";
+      users.forEach((user, index) => {
+        const item = document.createElement("li");
+        item.textContent = user;
+        userList.appendChild(item);
+      });
+    }
+
+    async function resetGroup() {
+      const confirmed = confirm("Are you sure you want to reset all data?");
+      if (!confirmed) return;
+
+      await fetch("/reset", { method: "POST" });
+      statusText.innerText = "❌ Group data has been reset.";
+      document.getElementById("trackList").innerHTML = "";
+      document.getElementById("userList").innerHTML = "";
+    }
+  </script>
+</body>
+</html>
